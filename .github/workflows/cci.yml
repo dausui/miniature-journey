@@ -12,13 +12,9 @@ env:
 
 jobs:
   build:
-    name: Build APK
+    name: Build Release APK
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        build-type: [debug, release]
-    timeout-minutes: 30
-
+    timeout-minutes: 20
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -28,6 +24,13 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
+
+      - name: Install Android SDK 34
+        uses: android-actions/setup-android@v3
+        with:
+          api-level: 34
+          build-tools: 34.0.0
+          target: default
 
       - name: Cache Gradle dependencies
         uses: actions/cache@v3
@@ -40,21 +43,38 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-gradle-
 
+      - name: Cache Android build
+        uses: actions/cache@v3
+        with:
+          path: |
+            app/build
+          key: ${{ runner.os }}-android-build-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-android-build-
+
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      - name: Build ${{ matrix.build-type }} APK
-        run: |
-          if [ "${{ matrix.build-type }}" = "release" ]; then
-            ./gradlew assembleRelease
-          else
-            ./gradlew assembleDebug
-          fi
+      - name: Clean build
+        run: ./gradlew clean --no-daemon
+
+      - name: Build release APK
+        run: ./gradlew assembleRelease --no-daemon --max-workers=2
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
-          name: app-${{ matrix.build-type }}-${{ github.run_number }}
+          name: app-release-${{ github.run_number }}
           path: |
-            app/build/outputs/apk/${{ matrix.build-type }}/*.apk
-            app/build/outputs/mapping/${{ matrix.build-type }}/
+            app/build/outputs/apk/release/*.apk
+            app/build/outputs/mapping/release/
+
+      - name: Upload build logs if failed
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-logs
+          path: |
+            app/build/reports/
+            build/reports/
+            **/build.log
